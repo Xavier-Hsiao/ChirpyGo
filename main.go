@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
@@ -10,8 +11,16 @@ func main() {
 	const filepathRoot = "."
 	const port = "8080"
 
+	cfg := apiConfig{
+		fileServerHits: atomic.Int32{},
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
+
+	mux.HandleFunc("/healthz", cfg.handlerHealthCheck)
+	mux.HandleFunc("/metrics", cfg.handlerMetrics)
+	mux.HandleFunc("/reset", cfg.handlerReset)
 
 	server := &http.Server{
 		Addr:         ":" + port,
