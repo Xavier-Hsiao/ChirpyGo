@@ -15,7 +15,7 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 
-	message := fmt.Sprintf("Hits: %d", cfg.fileServerHits.Load())
+	message := fmt.Sprintf("Hits: %d\n", cfg.fileServerHits.Load())
 	w.Write([]byte(message))
 }
 
