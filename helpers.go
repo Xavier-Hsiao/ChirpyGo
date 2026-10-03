@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 )
 
 func respondWithError(w http.ResponseWriter, code int, msg string, err error) {
@@ -38,4 +39,18 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 
 	w.WriteHeader(code)
 	w.Write(dat)
+}
+
+func validateProfane(msg string, badWords []string) string {
+	words := strings.Split(msg, " ")
+
+	for i, word := range words {
+		for _, badWord := range badWords {
+			if strings.ToLower(word) == badWord {
+				words[i] = "****"
+			}
+		}
+	}
+
+	return strings.Join(words, " ")
 }

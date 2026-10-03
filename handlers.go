@@ -49,9 +49,12 @@ func handlerValidateChrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	badWords := []string{"kerfuffle", "sharbert", "fornax"}
+	cleanedBody := validateProfane(params.Body, badWords)
+
 	type returnVal struct {
-		Valid bool `json:"valid"`
+		Cleaned_body string `json:"cleaned_body"`
 	}
 
-	respondWithJSON(w, http.StatusOK, returnVal{Valid: true})
+	respondWithJSON(w, http.StatusOK, returnVal{Cleaned_body: cleanedBody})
 }
