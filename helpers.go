@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"net/mail"
 	"strings"
 )
 
@@ -53,4 +55,29 @@ func validateProfane(msg string, badWords []string) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+func isEmailValid(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+
+	// ensure that the domain name includes "."
+	parts := strings.Split(addr.Address, "@")
+	if len(parts) != 2 {
+		return false
+	}
+
+	domain := parts[1]
+	if !strings.Contains(domain, ".") {
+		return false
+	}
+
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		return false
+	}
+
+	return true
 }
