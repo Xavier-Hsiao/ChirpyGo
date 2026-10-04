@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -55,6 +56,17 @@ func validateProfane(msg string, badWords []string) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+func validateChirp(body string) (string, error) {
+	const maxChirpLength = 140
+	if len(body) > maxChirpLength {
+		return "", errors.New("chirp is too long")
+	}
+
+	badWords := []string{"kerfuffle", "sharbert", "fornax"}
+	cleaned := validateProfane(body, badWords)
+	return cleaned, nil
 }
 
 func isEmailValid(email string) bool {
