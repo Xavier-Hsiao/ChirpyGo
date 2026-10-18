@@ -35,10 +35,13 @@ func main() {
 		log.Fatal("PLATFORM must be set")
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+
 	cfg := apiConfig{
 		fileServerHits: atomic.Int32{},
 		dbQueries:      dbQueries,
 		platform:       platform,
+		jwtSecret:      jwtSecret,
 	}
 
 	mux := http.NewServeMux()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Xavier-Hsiao/chirpy/internal/auth"
 	"github.com/Xavier-Hsiao/chirpy/internal/database"
@@ -83,24 +84,36 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	respondWithJSON(
 		w, http.StatusCreated,
 		User{
-			ID:         user.ID,
-			Created_at: user.CreatedAt,
-			Updated_at: user.UpdatedAt,
-			Email:      user.Email,
+			ID:        user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email:     user.Email,
 		},
 	)
 }
 
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	// 驗證 JWT
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate your identity", err)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't valiate your identity", err)
+		return
+	}
+
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
@@ -114,7 +127,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleanedBody,
-		UserID: params.UserID,
+		UserID: userID,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp to DB", err)
@@ -122,11 +135,11 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondWithJSON(w, http.StatusCreated, Chirp{
-		ID:         chirp.ID,
-		Created_at: chirp.CreatedAt,
-		Updated_at: chirp.UpdatedAt,
-		Body:       chirp.Body,
-		UserID:     chirp.UserID,
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	})
 }
 
@@ -140,11 +153,11 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	chirps := make([]Chirp, len(dbChirps))
 	for i, dbChirp := range dbChirps {
 		chirps[i] = Chirp{
-			ID:         dbChirp.ID,
-			Created_at: dbChirp.CreatedAt,
-			Updated_at: dbChirp.UpdatedAt,
-			Body:       dbChirp.Body,
-			UserID:     dbChirp.UserID,
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      dbChirp.Body,
+			UserID:    dbChirp.UserID,
 		}
 	}
 
@@ -166,18 +179,19 @@ func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, r *http.Request
 	}
 
 	respondWithJSON(w, http.StatusOK, Chirp{
-		ID:         dbChirp.ID,
-		Created_at: dbChirp.CreatedAt,
-		Updated_at: dbChirp.UpdatedAt,
-		Body:       dbChirp.Body,
-		UserID:     dbChirp.UserID,
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
 	})
 }
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds *int   `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -195,6 +209,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 驗證密碼
 	passwordMatch, err := auth.CheckPasswordHash(params.Password, userDB.HashedPassword)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't validate password", nil)
@@ -206,10 +221,27 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 計算過期時間，預設為一小時，超過一小時維持一小時
+	expirationDuration := time.Hour
+	if params.ExpiresInSeconds != nil {
+		userDuration := time.Duration(*params.ExpiresInSeconds) * time.Second
+		if userDuration < time.Hour {
+			expirationDuration = userDuration
+		}
+	}
+
+	// 簽發 JWT
+	token, err := auth.MakeJWT(userDB.ID, cfg.jwtSecret, expirationDuration)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create JWT", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, User{
-		ID:         userDB.ID,
-		Created_at: userDB.CreatedAt,
-		Updated_at: userDB.UpdatedAt,
-		Email:      userDB.Email,
+		ID:        userDB.ID,
+		CreatedAt: userDB.CreatedAt,
+		UpdatedAt: userDB.UpdatedAt,
+		Email:     userDB.Email,
+		Token:     token,
 	})
 }
