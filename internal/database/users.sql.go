@@ -7,6 +7,9 @@ package database
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -69,6 +72,35 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
+	)
+	return i, err
+}
+
+const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
+SELECT users.id, users.created_at, users.updated_at, users.email
+FROM users
+    INNER JOIN refresh_tokens ON user_id = refresh_tokens.user_id
+WHERE
+    refresh_tokens.token = $1
+    AND refresh_tokens.revoked_at IS NULL
+    AND refresh_tokens.expires_at > NOW()
+`
+
+type GetUserByRefreshTokenRow struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Email     string
+}
+
+func (q *Queries) GetUserByRefreshToken(ctx context.Context, token string) (GetUserByRefreshTokenRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserByRefreshToken, token)
+	var i GetUserByRefreshTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
 	)
 	return i, err
 }

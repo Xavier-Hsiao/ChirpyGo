@@ -96,13 +96,13 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	// 驗證 JWT
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Couldn't validate your identity", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT", err)
 		return
 	}
 
 	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Couldn't valiate your identity", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT", err)
 		return
 	}
 
@@ -189,9 +189,8 @@ func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, r *http.Request
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds *int   `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -221,27 +220,80 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 計算過期時間，預設為一小時，超過一小時維持一小時
-	expirationDuration := time.Hour
-	if params.ExpiresInSeconds != nil {
-		userDuration := time.Duration(*params.ExpiresInSeconds) * time.Second
-		if userDuration < time.Hour {
-			expirationDuration = userDuration
-		}
-	}
-
 	// 簽發 JWT
-	token, err := auth.MakeJWT(userDB.ID, cfg.jwtSecret, expirationDuration)
+	accessToken, err := auth.MakeJWT(userDB.ID, cfg.jwtSecret, time.Hour)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create JWT", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, User{
-		ID:        userDB.ID,
-		CreatedAt: userDB.CreatedAt,
-		UpdatedAt: userDB.UpdatedAt,
-		Email:     userDB.Email,
-		Token:     token,
+	// 產生 refresh token
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create refresh token", err)
+		return
+	}
+
+	err = cfg.dbQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:  refreshToken,
+		UserID: userDB.ID,
 	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't store refresh token to DB", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, User{
+		ID:           userDB.ID,
+		CreatedAt:    userDB.CreatedAt,
+		UpdatedAt:    userDB.UpdatedAt,
+		Email:        userDB.Email,
+		Token:        accessToken,
+		RefreshToken: refreshToken,
+	})
+}
+
+// This endpoint accept a refresh token in headers
+func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
+		return
+	}
+
+	user, err := cfg.dbQueries.GetUserByRefreshToken(r.Context(), token)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't get user from DB", err)
+		return
+	}
+
+	newAccessToken, err := auth.MakeJWT(user.ID, cfg.jwtSecret, time.Hour)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
+		return
+	}
+
+	type resp struct {
+		Token string `json:"token"`
+	}
+
+	respondWithJSON(w, http.StatusOK, resp{
+		Token: newAccessToken,
+	})
+}
+
+func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
+		return
+	}
+
+	err = cfg.dbQueries.RevokeRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't revoke JWT", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
