@@ -24,8 +24,8 @@ func GetBearerToken(headers http.Header) (string, error) {
 	return token, nil
 }
 
+// generate a random 256-bit hex-encoded string
 func MakeRefreshToken() (string, error) {
-	// generate a random 256-bit hex-encoded string
 	randomData := make([]byte, 32)
 	_, err := rand.Read(randomData)
 	if err != nil {
