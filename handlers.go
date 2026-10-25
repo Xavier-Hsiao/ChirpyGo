@@ -257,7 +257,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find token", err)
 		return
 	}
 
@@ -285,7 +285,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't find token", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find token", err)
 		return
 	}
 
@@ -348,4 +348,49 @@ func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) 
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 	})
+}
+
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	// 從 request 拿取 ChirpID 並轉換型別為 uuid
+	chirpIDString := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(chirpIDString)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp ID", err)
+		return
+	}
+
+	// 驗證 JWT 以取得登入的 userID
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find token", err)
+		return
+	}
+	userID, err := auth.ValidateJWT(accessToken, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
+		return
+	}
+
+	// 從資料庫透過 chirpID 提取貼文
+	chirp, err := cfg.dbQueries.GetChirpByID(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Couldn't find the chirp", err)
+		return
+	}
+
+	// 確認登入的使用者是否為該貼文的作者
+	if userID != chirp.UserID {
+		respondWithError(w, http.StatusForbidden, "You are not allowed to delete this chirp", nil)
+		return
+	}
+
+	// 執行貼文刪除
+	err = cfg.dbQueries.DeleteChirp(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't delete the chirp", err)
+		return
+	}
+
+	// 刪除成功，回傳 204 狀態碼
+	w.WriteHeader(http.StatusNoContent)
 }
