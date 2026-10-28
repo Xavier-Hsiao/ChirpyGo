@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 func GetBearerToken(headers http.Header) (string, error) {
@@ -49,4 +51,17 @@ func GetAPIKey(headers http.Header) (string, error) {
 	key := strings.TrimPrefix(authHeader, apiKeyPrefix)
 
 	return key, nil
+}
+
+func GetAuthorIDFromRequest(r *http.Request) (uuid.UUID, error) {
+	authorIDString := r.URL.Query().Get("author_id")
+	if authorIDString == "" {
+		return uuid.Nil, nil
+	}
+
+	authorID, err := uuid.Parse(authorIDString)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return authorID, nil
 }

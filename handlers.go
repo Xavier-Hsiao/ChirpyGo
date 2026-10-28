@@ -145,7 +145,20 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.dbQueries.GetChirps(r.Context())
+	// 確認 + 實踐 author_id 的篩選機制
+	authorID, err := auth.GetAuthorIDFromRequest(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid author ID", err)
+		return
+	}
+
+	var dbChirps []database.Chirp
+
+	if authorID == uuid.Nil {
+		dbChirps, err = cfg.dbQueries.GetChirps(r.Context())
+	} else {
+		dbChirps, err = cfg.dbQueries.GetChirpsByAuthor(r.Context(), authorID)
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps from DB", err)
 		return
