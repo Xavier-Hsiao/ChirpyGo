@@ -23,7 +23,7 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByRefreshToken :one
 SELECT users.id, users.created_at, users.updated_at, users.email
 FROM users
-    INNER JOIN refresh_tokens ON user_id = refresh_tokens.user_id
+    INNER JOIN refresh_tokens ON users.id = refresh_tokens.user_id
 WHERE
     refresh_tokens.token = $1
     AND refresh_tokens.revoked_at IS NULL
@@ -42,3 +42,6 @@ RETURNING
 
 -- name: DeleteUsers :exec
 DELETE FROM users;
+
+-- name: UpgradeUserToChirpyRed :execrows
+UPDATE users SET is_chirpy_red = TRUE WHERE id = $1;
