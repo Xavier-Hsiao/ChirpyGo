@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/Xavier-Hsiao/chirpy/internal/auth"
@@ -174,6 +175,15 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 			UserID:    dbChirp.UserID,
 		}
 	}
+
+	// 排序
+	sortDirection := r.URL.Query().Get("sort")
+	slices.SortFunc(chirps, func(a, b Chirp) int {
+		if sortDirection == "desc" {
+			return b.CreatedAt.Compare(a.CreatedAt)
+		}
+		return a.CreatedAt.Compare(b.CreatedAt)
+	})
 
 	respondWithJSON(w, http.StatusOK, chirps)
 }
